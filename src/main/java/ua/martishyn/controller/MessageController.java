@@ -1,6 +1,5 @@
 package ua.martishyn.controller;
 
-import jdk.nashorn.internal.runtime.RewriteException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -15,43 +14,30 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.multipart.MultipartFile;
 import ua.martishyn.entities.Message;
 import ua.martishyn.entities.User;
-import ua.martishyn.repository.MessageRepository;
+import ua.martishyn.service.MessageService;
+import ua.martishyn.service.UserService;
 import ua.martishyn.service.ValidationUtils;
 
-import javax.validation.Path;
 import javax.validation.Valid;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-
 @Controller
-public class GreetingController {
-    @Autowired
-    private MessageRepository messageRepository;
+public class MessageController {
     @Value("${upload.path}")
     private String uploadPath;
+    private static final String MESSAGE_ATTRIBUTE = "message";
+    private static final String MESSAGES_ATTRIBUTE = "messages";
+    private static final String REDIRECT_USER_MESSAGES = "redirect:/user-messages/";
 
-    @GetMapping("/")
-    public String greeting(Map<String, Object> model) {
-        return "greeting";
-    }
 
-    @GetMapping("/main")
-    public String main(@RequestParam(required = false, defaultValue = "") String filter, Model model) {
-        Iterable<Message> messages;
-        if (filter != null && !filter.isEmpty()) {
-            messages = messageRepository.findByTag(filter);
-        } else {
-            messages = messageRepository.findAll();
-        }
-        model.addAttribute("messages", messages);
-        model.addAttribute("filter", filter);
-        return "main";
-    }
+    @Autowired
+    private MessageService messageService;
+    @Autowired
+    private UserService userService;
 
     @PostMapping("/main")
     public String addMessage(@AuthenticationPrincipal User user,
@@ -64,15 +50,15 @@ public class GreetingController {
         if (bindingResult.hasErrors()) {
             Map<String, String> errorsMap = ValidationUtils.getErrors(bindingResult);
             model.mergeAttributes(errorsMap);
-            model.addAttribute("message", message);
+            model.addAttribute(MESSAGE_ATTRIBUTE, message);
             model.addAttribute("tag", message.getTag());
         } else {
             addFileToMessage(message, file);
-            model.addAttribute("message", null);
-            messageRepository.save(message);
+            model.addAttribute(MESSAGE_ATTRIBUTE, null);
+            messageService.save(message);
         }
-        Iterable<Message> messages = messageRepository.findAll();
-        model.addAttribute("messages", messages);
+        Iterable<Message> messages = messageService.findAll();
+        model.addAttribute(MESSAGES_ATTRIBUTE, messages);
         return "main";
     }
 
@@ -98,11 +84,11 @@ public class GreetingController {
     public String filter(@RequestParam String filter, Map<String, Object> model) {
         Iterable<Message> messages;
         if (filter != null && !filter.isEmpty()) {
-            messages = messageRepository.findByTag(filter);
+            messages = messageService.findByTag(filter);
         } else {
-            messages = messageRepository.findAll();
+            messages = messageService.findAll();
         }
-        model.put("messages", messages);
+        model.put(MESSAGES_ATTRIBUTE, messages);
         return "main";
     }
 
@@ -115,31 +101,44 @@ public class GreetingController {
     ) {
 
         Set<Message> messages = user.getMessages();
-        model.addAttribute("messages", messages);
-        model.addAttribute("message", message);
+        model.addAttribute("userChannel", user);
+        model.addAttribute("subscriptionsCount", user.getSubscriptions().size());
+        model.addAttribute("subscribersCount", user.getSubscribers().size());
+        model.addAttribute("isSubscriber", user.getSubscribers().contains(currentUser));
+        model.addAttribute(MESSAGES_ATTRIBUTE, messages);
+        model.addAttribute(MESSAGE_ATTRIBUTE, message);
         model.addAttribute("isCurrentUser", currentUser.equals(user));
         return "user-messages";
     }
 
-    @PostMapping("/user-messages/{user}")
+    @PostMapping("/user-messages/{user}/edit")
     public String updateMessage(@AuthenticationPrincipal User currentUser,
                                 @PathVariable Long user,
-                                @RequestParam("id") Message message,
+                                @RequestParam Message message,
                                 @RequestParam("text") String text,
                                 @RequestParam("tag") String tag,
-                                @RequestParam("file") MultipartFile image) throws IOException {
+                                @RequestParam("file") MultipartFile image) {
         if (message.getAuthor().equals(currentUser)) {
-            if (StringUtils.isEmpty(text) && StringUtils.isEmpty(tag)){
-                return "redirect:/user/messages/" + user;
-            }
-            else {
+            if (StringUtils.isEmpty(text) && StringUtils.isEmpty(tag)) {
+                return REDIRECT_USER_MESSAGES + user;
+            } else {
                 message.setText(text);
                 message.setTag(tag);
-                addFileToMessage(message,image);
-                messageRepository.save(message);
+                addFileToMessage(message, image);
+                messageService.save(message);
             }
         }
-        return "redirect:/user-messages/" + user;
+        return REDIRECT_USER_MESSAGES + user;
     }
 
+    @GetMapping("/user-messages/{user}/delete")
+    public String deleteMessage(
+            @AuthenticationPrincipal User currentUser,
+            @PathVariable User user,
+            @RequestParam(name = "message") Long id) {
+        if (currentUser.equals(user)) {
+            messageService.deleteMessageById(id);
+        }
+        return REDIRECT_USER_MESSAGES + user.getId();
+    }
 }

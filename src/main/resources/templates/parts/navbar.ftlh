@@ -36,8 +36,12 @@
         </ul>
 
 
-        <div class="navbar-text mr-4">${name}</div>
+        <div class="navbar-text mr-4"><#if user??>${name}<#else>Guest</#if></div>
+        <#if user??>
         <@l.logout />
+        <#else>
+         <a class="btn btn-primary" href="/login">Login</a>
+         </#if>
 
     </div>
     </div>

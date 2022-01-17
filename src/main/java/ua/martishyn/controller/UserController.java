@@ -15,6 +15,7 @@ import java.util.Map;
 @RequestMapping("/user")
 @Controller
 public class UserController {
+    private static final String REDIRECT_USER_MESSAGES = "redirect:/user-messages/";
 
     @Autowired
     private UserService userService;
@@ -58,5 +59,33 @@ public class UserController {
     {
         userService.updateUser(user, password, email);
         return "redirect:/user/profile";
+    }
+    @GetMapping("/subscribe/{user}")
+    public String subscribeToUser(@AuthenticationPrincipal User currentUser,
+                                  @PathVariable User user) {
+        userService.subscribe(currentUser, user);
+        return REDIRECT_USER_MESSAGES + user.getId();
+    }
+
+    @GetMapping("/unsubscribe/{user}")
+    public String unsubscribeFromUser(@AuthenticationPrincipal User currentUser,
+                                      @PathVariable User user) {
+        userService.unsubscribe(currentUser, user);
+        return REDIRECT_USER_MESSAGES + user.getId();
+    }
+
+
+    @GetMapping("{type}/{user}/list")
+    public String getUserList(@PathVariable User user,
+                              @PathVariable String type,
+                              Model model){
+        model.addAttribute("userChannel", user);
+        model.addAttribute("type", type);
+        if ("subscriptions".equals(type)){
+            model.addAttribute("users", user.getSubscriptions());
+        } else {
+            model.addAttribute("users", user.getSubscribers());
+        }
+        return "subscriptions";
     }
 }
